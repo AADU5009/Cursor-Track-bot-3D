@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Your bot in 3D, watching the cursor</title>
+<style>
+:root{--top:#6a4fd8;--bot:#1a1a5a;--ink:#f1eeff;--sub:#bdb5e8;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--top:#4a36a8;--bot:#0e0e3a}}
+:root[data-theme="dark"]{--top:#4a36a8;--bot:#0e0e3a}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:linear-gradient(160deg,var(--top),var(--bot));color:var(--ink);font-family:"Sora",system-ui,sans-serif;display:flex;flex-direction:column;overflow:hidden}
+h1{font-weight:600;font-size:clamp(1.2rem,3.4vw,2rem);margin:0;padding:18px 22px 6px;letter-spacing:-.01em}
+p{margin:0;padding:0 22px 8px;color:var(--sub);font-size:.95rem}
+#stage{position:relative;flex:1;min-height:0}
+canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+<h1>Your bot looks where you look</h1>
+<p>Move your mouse or finger. The eyes move first, then the head and antenna follow.</p>
+<div id="stage"><canvas id="c"></canvas></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+var stage=document.getElementById('stage'),cv=document.getElementById('c');
+var reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+var renderer;
+try{renderer=new THREE.WebGLRenderer({canvas:cv,alpha:true,antialias:true})}catch(e){
+  stage.insertAdjacentHTML('beforeend','<p style="position:absolute;bottom:0">WebGL isn’t available in this browser.</p>');return}
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+var scene=new THREE.Scene(),cam=new THREE.PerspectiveCamera(30,1,.1,100);
+cam.position.set(0,.2,12);
+scene.add(new THREE.HemisphereLight(0xffffff,0x6a5ad0,.9));
+var key=new THREE.DirectionalLight(0xffffff,.85);key.position.set(-3,4,6);scene.add(key);
+var rim=new THREE.DirectionalLight(0x9a7bff,.6);rim.position.set(4,2,-3);scene.add(rim);
+
+function M(c,r){return new THREE.MeshStandardMaterial({color:c,roughness:r})}
+var shellM=M(0xe8e4ff,.3),screenM=M(0x14143c,.25),eyeM=M(0xffffff,.2),violet=M(0x8d78ff,.35),deep=M(0x6a52e8,.4),tieM=M(0xf2f0ff,.35);
+
+function rr(w,h,r){var s=new THREE.Shape(),x=-w/2,y=-h/2;
+  s.moveTo(x+r,y);s.lineTo(x+w-r,y);s.quadraticCurveTo(x+w,y,x+w,y+r);s.lineTo(x+w,y+h-r);
+  s.quadraticCurveTo(x+w,y+h,x+w-r,y+h);s.lineTo(x+r,y+h);s.quadraticCurveTo(x,y+h,x,y+h-r);
+  s.lineTo(x,y+r);s.quadraticCurveTo(x,y,x+r,y);return s}
+function ext(shape,d,bev,mat){var g=new THREE.ExtrudeGeometry(shape,{depth:d,bevelEnabled:bev>0,bevelThickness:bev,bevelSize:bev,bevelSegments:6,curveSegments:16});
+  var m=new THREE.Mesh(g,mat);return m}
+
+var root=new THREE.Group();scene.add(root);
+var head=new THREE.Group();head.position.y=.25;root.add(head);
+
+// Speech-bubble head: rounded shell, dark screen, tail at lower left
+var shell=ext(rr(3.3,2.5,.8),.7,.18,shellM);shell.position.z=-.35;head.add(shell);
+var tailS=new THREE.Shape();tailS.moveTo(0,0);tailS.lineTo(.9,0);tailS.lineTo(.2,-.7);tailS.lineTo(0,0);
+var tail=ext(tailS,.5,.12,shellM);tail.position.set(-1.45,-1.1,-.25);head.add(tail);
+var screen=ext(rr(2.65,1.85,.55),.04,0,screenM);screen.position.z=.57;head.add(screen);
+
+// Happy closed eyes: two arcs that slide across the screen
+var eyeG=new THREE.Group();eyeG.position.z=.66;head.add(eyeG);
+[-1,1].forEach(function(s){
+  var e=new THREE.Mesh(new THREE.TorusGeometry(.2,.05,12,28,Math.PI),eyeM);
+  e.position.set(s*.62,-.06,0);eyeG.add(e);
+  [0,Math.PI].forEach(function(a){var c=new THREE.Mesh(new THREE.SphereGeometry(.05,12,10),eyeM);
+    c.position.set(s*.62+Math.cos(a)*.2,-.06+Math.sin(a)*0,0);eyeG.add(c)})});
+
+// Smile: thin arc like the eyes, rides with them
+var smile=new THREE.Group();smile.position.set(0,-.42,0);eyeG.add(smile);
+var arc=new THREE.Mesh(new THREE.TorusGeometry(.22,.05,12,28,Math.PI),eyeM);arc.rotation.z=Math.PI;smile.add(arc);
+[-1,1].forEach(function(s){var c=new THREE.Mesh(new THREE.SphereGeometry(.05,12,10),eyeM);c.position.set(s*.22,0,0);smile.add(c)});
+
+// Antenna
+var ant=new THREE.Group();ant.position.set(0,1.25,0);head.add(ant);
+var stick=new THREE.Mesh(new THREE.CylinderGeometry(.05,.05,.7,12),violet);stick.position.y=.35;ant.add(stick);
+var ball=new THREE.Mesh(new THREE.SphereGeometry(.22,24,18),violet);ball.position.y=.85;ant.add(ball);
+
+// Headset: ear cup and mic boom on the right
+var cup=new THREE.Mesh(new THREE.SphereGeometry(.4,24,18),deep);cup.scale.set(.55,1,.7);cup.position.set(1.78,.1,-.05);head.add(cup);
+var boomC=new THREE.CatmullRomCurve3([new THREE.Vector3(1.85,-.3,.0),new THREE.Vector3(1.97,-.75,.12),new THREE.Vector3(1.78,-1.38,.42),new THREE.Vector3(1.25,-1.68,.7),new THREE.Vector3(.95,-1.62,.82)]);
+head.add(new THREE.Mesh(new THREE.TubeGeometry(boomC,30,.04,8,false),deep));
+var mic=new THREE.Mesh(new THREE.SphereGeometry(.14,16,12),violet);mic.position.set(.95,-1.62,.82);head.add(mic);
+
+// Tie
+var tie=new THREE.Group();tie.position.set(0,-1.38,.02);root.add(tie);
+var tieK=M(0xd2cbff,.35);
+function poly(pts,d,b,mat){var s=new THREE.Shape();s.moveTo(pts[0][0],pts[0][1]);for(var i=1;i<pts.length;i++)s.lineTo(pts[i][0],pts[i][1]);s.closePath();
+  var m=new THREE.Mesh(new THREE.ExtrudeGeometry(s,{depth:d,bevelEnabled:true,bevelThickness:b,bevelSize:b,bevelSegments:5}),mat);m.position.z=-d/2;return m}
+var knot=poly([[-.09,.09],[.09,.09],[.14,-.07],[-.14,-.07]],.07,.03,tieK);tie.add(knot);
+var blade=poly([[-.11,-.05],[.11,-.05],[.21,-.34],[0,-.74],[-.21,-.34]],.05,.03,tieM);blade.position.y=-.04;blade.position.z=.015;tie.add(blade);
+
+// Tracking
+var tx=0,ty=0,hx=0,hy=0,ex=0,ey=0,have=false,t0=performance.now();
+function point(e){var r=stage.getBoundingClientRect(),p=e.touches?e.touches[0]:e;
+  tx=Math.max(-1.5,Math.min(1.5,((p.clientX-r.left)/r.width-.5)*2));
+  ty=Math.max(-1.5,Math.min(1.5,((p.clientY-r.top)/r.height-.5)*2));have=true}
+addEventListener('pointermove',point);addEventListener('touchmove',point,{passive:true});
+addEventListener('pointerleave',function(){have=false});
+function resize(){var w=stage.clientWidth,h=stage.clientHeight;
+  renderer.setSize(w,h,false);cam.aspect=w/h;
+  cam.position.z=Math.max(12,12*(1.05/cam.aspect));cam.updateProjectionMatrix()}
+addEventListener('resize',resize);resize();
+
+function tick(now){
+  var t=(now-t0)/1000,gx=tx,gy=ty;
+  if(!have&&!reduce){gx=Math.sin(t*.6)*.5;gy=Math.sin(t*.45)*.25}
+  ex+=(gx-ex)*.24;ey+=(gy-ey)*.24;     // eyes react fast
+  hx+=(gx-hx)*.07;hy+=(gy-hy)*.07;     // head follows slowly
+  head.rotation.y=hx*.5;head.rotation.x=hy*.28;head.rotation.z=-hx*.05;
+  eyeG.position.x=Math.max(-.32,Math.min(.32,ex*.3));
+  eyeG.position.y=Math.max(-.2,Math.min(.2,-ey*.15));
+  var near=Math.max(0,1-Math.sqrt(gx*gx+gy*gy)),sw=1+near*.28;   // smile widens as the cursor nears
+  smile.scale.x+=(sw-smile.scale.x)*.12;smile.scale.y+=(1+near*.35-smile.scale.y)*.12;
+  ant.rotation.z=(hx-gx)*.4+(reduce?0:Math.sin(t*2)*.04);   // antenna lags and wobbles
+  ant.rotation.x=(hy-gy)*-.2;
+  tie.rotation.z=hx*.15+(reduce?0:Math.sin(t*1.3)*.03);
+  root.position.y=(reduce?0:Math.sin(t*1.5)*.06);
+  root.rotation.y=hx*.1;
+  renderer.render(scene,cam);requestAnimationFrame(tick)}
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
